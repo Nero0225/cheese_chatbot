@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
 import json
+from chatbot.utils import generate_product_description_openai
 
 ORIGIN = "https://shop.kimelo.com"
 URL = "https://shop.kimelo.com/department/cheese/3365"
@@ -74,8 +75,6 @@ def scrape_cheese_data(url):
                         print("related", relates)
 
                     description = "N/A"
-                    SKU = "N/A"
-                    UPC = "N/A"
                     for item in description_SKU_and_UPC:
                         if item.text[:13] == "Description: ":
                             description = item.text[13:]
@@ -83,6 +82,19 @@ def scrape_cheese_data(url):
                             SKU = item.find("b", class_="chakra-text css-0").text
                         elif item.text[:5] == "UPC: ":
                             UPC = item.find("b", class_="chakra-text css-0").text
+
+                    # If description is still N/A, try to generate one
+                    if description == "N/A" and name != "N/A":
+                        print(f"Attempting to generate description for {name}...")
+                        generated_desc = generate_product_description_openai(name, category, company_name)
+                        if generated_desc and generated_desc not in ["No specific description available for this product at the moment.", "Explore this cheese to discover its unique qualities.", "A delightful cheese, perfect for various occasions."]:
+                            description = generated_desc
+                            print(f"Using generated description for {name}: {description[:50]}...")
+                        else:
+                            print(f"Could not generate a good description for {name}. Keeping N/A or fallback.")
+                            # Keep description as N/A or the fallback from the function if it was more generic
+                            if generated_desc: # If there was a fallback, use it over plain "N/A"
+                                description = generated_desc 
 
                     small_images = [unquote(image.find('img')['src'].replace("/_next/image?url=", "").replace("&w=3840&q=75", "")) for image in more_soup.find_all('button', class_="chakra-tabs__tab border css-2jmkdc")]
 

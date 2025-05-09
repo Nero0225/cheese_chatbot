@@ -1,7 +1,8 @@
 import streamlit as st
 import time
+import json # Import json module
 from datetime import datetime # For timestamps
-from utils import (
+from utils import ( 
     get_openai_client,
     get_pinecone_index,
     query_pinecone,
@@ -72,6 +73,16 @@ if 'is_generating' not in st.session_state:
 if 'stop_generation_requested' in st.session_state: # Initialize if not present
     st.session_state.stop_generation_requested = False
 
+# Add an expander to the sidebar that shows the retrieved contexts
+active_session = st.session_state.chat_sessions[st.session_state.active_chat_index]
+with st.sidebar.expander("🔍 Retrieved Contexts", expanded=False):
+    # Get the contexts from the active session
+    last_contexts = active_session.get("last_contexts", [])
+    if last_contexts:
+        st.code(json.dumps(last_contexts, indent=2), language="json")
+    else:
+        st.write("No context data available yet.")
+
 # --- Sidebar: New Chat Button and Clear Active Chat Button ---
 st.sidebar.divider()
 st.sidebar.write("Chat Management:")
@@ -126,7 +137,18 @@ if st.sidebar.button("➕ New Chat", help="Start a new chat session", use_contai
 st.sidebar.divider()
 
 # Display chat sessions in the sidebar for switching
-st.sidebar.write("Chat History:")
+ch_col1, ch_col2 = st.sidebar.columns([0.7, 0.3]) # Columns for label and button
+with ch_col1:
+    st.sidebar.write("Chat History:")
+with ch_col2:
+    if st.button("🗑️", key="clear_all_chats", help="Delete all chat sessions and start fresh", use_container_width=True):
+        st.session_state.chat_sessions = [create_new_chat_session("Chat 1")]
+        st.session_state.active_chat_index = 0
+        st.session_state.is_generating = False
+        st.session_state.stop_generation_requested = False
+        st.toast("All chats cleared!", icon="🗑️")
+        st.rerun()
+
 for idx, session in enumerate(st.session_state.chat_sessions):
     session_display_name = session.get("name", f"Chat {idx + 1}")
     # Use columns to place delete button next to chat name button
@@ -163,7 +185,7 @@ def format_context_for_llm(contexts, aggregate_data=None): # Added aggregate_dat
 
     if not contexts:
         return "No relevant cheese information found in the database."
-
+    
     formatted_texts = []
     for i, context in enumerate(contexts):
         meta = context.get('metadata', {})
@@ -220,7 +242,7 @@ When a user asks a question, follow these steps:
 6. If the number of cheeses found in the context is less than the requested number or less than 6 (if a general list is requested), only list the cheeses that are available. Do not mention the fact that there are fewer items displayed unless there is a specific question about the number.
 7. Be concise and helpful. If the user asks a general question (e.g., "Hello"), do not search the database, but answer politely.
 8. If the context includes a warning_text for the product, you can mention it if it is relevant to the user's question about product safety or a specific ingredient.
-9. After answering the user's question, suggest 2-3 related follow-up questions that the user might have. Please write in a clickable Markdown link format, such as [Enter your question text here?](#).
+9. After answering the user's question, suggest 2-3 related follow-up questions that the user might have. Please write in a Markdown format.
 """
 
 # --- UI Rendering ---
@@ -236,51 +258,36 @@ with chat_container:
     for i, message in enumerate(active_session_messages):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            
-            # Updated expander logic to handle both raw contexts and processed aggregate context for the active session
+                
+                # Updated expander logic to handle both raw contexts and processed aggregate context for the active session
             if message["role"] == "assistant" and (message.get("context_data") or message.get("processed_context_for_display")):
                 with st.expander("🔍 View Context Data Used", expanded=False):
                     processed_display = message.get("processed_context_for_display")
                     raw_context_data = message.get("context_data")
 
-                    if processed_display:
-                        st.markdown(processed_display)
-                    elif isinstance(raw_context_data, list) and raw_context_data:
-                        cols_per_row = 3 
-                        contexts_to_display_meta = [match.get('metadata', {}) for match in raw_context_data if isinstance(match, dict) and 'metadata' in match]
-
-                        if not contexts_to_display_meta:
-                            st.write("No specific context items to display for this response.")
+                    if processed_display: # For aggregate queries, this is a pre-formatted string
+                        # To show it as JSON, we can wrap it or just show the string as is.
+                        # For consistency, let's make it a simple JSON object if it's a string.
+                        if isinstance(processed_display, str):
+                            try:
+                                # Attempt to parse if it might be a JSON string already
+                                json_data = json.loads(processed_display)
+                                st.code(json.dumps(json_data, indent=2), language="json")
+                            except json.JSONDecodeError:
+                                # If not a JSON string, treat as a summary string and wrap it
+                                st.code(json.dumps({"summary_context": processed_display}, indent=2), language="json")
+                        elif isinstance(processed_display, (list, dict)): # If it was already structured
+                                st.code(json.dumps(processed_display, indent=2), language="json")
                         else:
-                            for i in range(0, len(contexts_to_display_meta), cols_per_row):
-                                cols = st.columns(cols_per_row)
-                                for j in range(cols_per_row):
-                                    if i + j < len(contexts_to_display_meta):
-                                        item_meta = contexts_to_display_meta[i+j]
-                                        with cols[j]:
-                                            st.markdown(f"**{item_meta.get('name', 'N/A')}**")
-                                            if item_meta.get('image_url'):
-                                                img_url = item_meta['image_url']
-                                                if img_url.startswith("http%3A%2F%2F"):
-                                                    img_url = img_url.replace("http%3A%2F%2F", "https%3A%2F%2F")
-                                                elif img_url.startswith("http://"):
-                                                    img_url = img_url.replace("http://", "https://")
-                                                if any(img_url.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif"]):
-                                                    try:
-                                                        st.image(img_url, width=150, caption=f"{item_meta.get('brand', 'N/A')}")
-                                                    except Exception as img_e:
-                                                        st.caption(f"(Image preview unavailable: {item_meta.get('brand', 'N/A')})")
-                                                else:
-                                                    st.caption(f"(Image: {item_meta.get('brand', 'N/A')})")
-                                            else:
-                                                st.caption(f"(No image: {item_meta.get('brand', 'N/A')})")
-                                            st.markdown(f"**Brand:** {item_meta.get('brand', 'N/A')}")
-                                            st.markdown(f"**Price:** {item_meta.get('price_str', 'N/A')}")
-                                            st.markdown(f"**Per Mass:** {item_meta.get('per_price_str', 'N/A')}")
-                                            if item_meta.get('status', '').lower() == "back in stock soon":
-                                                st.markdown(f"**Status:** <span style='color:orange;'>Out of Stock</span>", unsafe_allow_html=True)
-                                            elif item_meta.get('status', '').lower() != "exist":
-                                                st.markdown(f"**Status:** <span style='color:orange;'>{item_meta.get('status')}</span>", unsafe_allow_html=True)
+                                st.markdown(str(processed_display)) # Fallback
+
+                    elif isinstance(raw_context_data, list) and raw_context_data:
+                        # Display raw_context_data (list of dicts from Pinecone) as JSON
+                        try:
+                            st.code(json.dumps(raw_context_data, indent=2), language="json")
+                        except TypeError as e:
+                            st.write(f"Could not serialize context to JSON: {e}")
+                            st.write(raw_context_data) # Show raw if serialization fails
                     else:
                         st.write("No context data to display for this response.")
 
@@ -315,14 +322,15 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
             st.session_state.is_generating = False # Ensure it's false for greetings
         else:
             st.session_state.is_generating = True # Set to true before starting potentially long operations
+            message_placeholder.markdown("Thinking... 💭") # Display thinking message
+            
             # Attempt to extract filters 
             metadata_filters = extract_filters_from_query(prompt)
 
-            is_aggregate_query = False
             context_for_llm = "" # Initialize context_for_llm
 
             if isinstance(metadata_filters, dict) and metadata_filters.get("query_type") == "aggregate_request":
-                is_aggregate_query = True
+                is_aggregate_query = True # CORRECTED: Should be True if it's an aggregate request
                 request_details = metadata_filters.get("request_details")
                 print(f"Debug (app.py): Aggregate query detected for {request_details}")
 
@@ -374,21 +382,22 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
                             processed_context_for_llm = "I couldn't determine the price range from the available data."
                     else:
                         processed_context_for_llm = "I can look for specific cheeses based on name, brand, category, or price. How can I help?"
-                        is_aggregate_query = False # Revert to normal flow
+                        is_aggregate_query = False # CORRECTED: Revert to normal flow for unknown aggregate types
 
                 # For aggregate queries, the LLM gets the processed string; raw contexts are not directly used by LLM.
                 # We also store this for display purposes if it was successfully generated.
                 if processed_context_for_llm and is_aggregate_query:
+                    print("Debuging", "555555555555555555555555555")
                     context_for_llm = format_context_for_llm(contexts=None, aggregate_data=processed_context_for_llm)
                     processed_context_for_display_this_turn = processed_context_for_llm
                 retrieved_contexts = [] # Clear raw contexts if it was an aggregate query that was processed
             
-            if not is_aggregate_query:
+            if st.session_state.is_generating:
                 print(f"Debug (app.py): Normal query. Filters: {metadata_filters}")
-                with st.spinner("Searching our cheese collection..."):
-                    actual_filters_for_pinecone = metadata_filters if isinstance(metadata_filters, dict) and "query_type" not in metadata_filters else None
-                    retrieved_contexts = query_pinecone(prompt, top_k=6, metadata_filter=actual_filters_for_pinecone)
-                    active_chat_session["last_contexts"] = retrieved_contexts # Store in active session
+            with st.spinner("Searching our cheese collection..."):
+                actual_filters_for_pinecone = metadata_filters if isinstance(metadata_filters, dict) and "query_type" not in metadata_filters else None
+                retrieved_contexts = query_pinecone(prompt, top_k=20, metadata_filter=actual_filters_for_pinecone)
+                active_chat_session["last_contexts"] = retrieved_contexts # Store in active session
                 context_for_llm = format_context_for_llm(retrieved_contexts) # Format normal context
             
             # Construct messages for LLM, including chat history from the active session
@@ -406,7 +415,7 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
             
             # Debug: Print the messages being sent to the LLM
             # print(f"Debug (app.py): Messages for LLM: {messages_for_llm}")
-
+            
             # Get LLM response (streaming)
             try:
                 # Pass the structured messages list to the LLM
@@ -425,14 +434,14 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
                 message_placeholder.markdown(full_response)
             finally:
                 st.session_state.is_generating = False # Reset flag when generation finishes or errors out
-
+        
         # Store assistant response with context in the active session
         active_chat_session["messages"].append({
-            "role": "assistant",
-            "content": full_response,
+            "role": "assistant", 
+            "content": full_response, 
             "context_data": retrieved_contexts if not is_aggregate_query else [], 
             "processed_context_for_display": processed_context_for_display_this_turn if is_aggregate_query else None
         })
 
         # Update the expander with the latest context data after the response is complete
-        # This is implicitly handled by re-running and displaying the message log above.
+        # This is implicitly handled by re-running and displaying the message log above. 

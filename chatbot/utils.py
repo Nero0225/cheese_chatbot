@@ -100,12 +100,12 @@ def query_pinecone(query_text, top_k=20, metadata_filter=None):
     if not query_embedding:
         return []
     
-    print("Debug (utils.py): metadata_filter", metadata_filter)
-    print("Debug (utils.py): query_embedding", len(query_embedding))
+    # print("Debug (utils.py): metadata_filter", metadata_filter)
+    # print("Debug (utils.py): query_embedding", len(query_embedding))
     
     # Define namespace consistently with ingest_data.py
     namespace = "cheese"
-    print(f"Debug (utils.py): Using namespace: {namespace}")
+    # print(f"Debug (utils.py): Using namespace: {namespace}")
     
     try:
         results = index.query(
@@ -115,7 +115,7 @@ def query_pinecone(query_text, top_k=20, metadata_filter=None):
             filter=metadata_filter,
             namespace=namespace  # Explicit namespace
         )
-        print("Debug (utils.py): results", results)
+        # print("Debug (utils.py): results", results)
         return results.get('matches', [])
     except Exception as e:
         print(f"Error querying Pinecone: {e}")
@@ -274,3 +274,45 @@ def get_enhanced_cheese_description_openai(cheese_name):
     except Exception as e:
         print(f"Error getting enhanced description for '{cheese_name}': {e}")
         return None # Return None if there's an error 
+
+def generate_product_description_openai(cheese_name, category, brand):
+    """Generates a product description using OpenAI, given name, category, and brand."""
+    if not cheese_name or cheese_name == 'N/A':
+        return "No specific description available for this product at the moment."
+
+    client = get_openai_client() # Uses existing client from utils
+    
+    prompt_parts = [f"Product Name: {cheese_name}"]
+    if category and category != 'N/A':
+        prompt_parts.append(f"Category: {category}")
+    if brand and brand != 'N/A':
+        prompt_parts.append(f"Brand: {brand}")
+    
+    input_details = "\n".join(prompt_parts)
+
+    prompt_messages = [
+        {
+            "role": "system",
+            "content": "You are a product description writer for an online cheese shop. Based on the provided cheese name, and optionally its category and brand, write a concise and appealing product description of 2-3 sentences. Focus on its likely taste, texture, common culinary uses, or interesting characteristics. Do not mention price, availability, or the current year. If category or brand is not provided, focus on the cheese name itself to infer general properties."
+        },
+        {
+            "role": "user",
+            "content": f"Please generate a product description for the following cheese:\n{input_details}"
+        }
+    ]
+
+    print(f"Debug (utils.py): Requesting LLM-generated product description for: {cheese_name}")
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL, # Uses existing LLM_MODEL from utils
+            messages=prompt_messages,
+            temperature=0.6, 
+            max_tokens=120, # Adjusted for 2-3 sentences
+            stream=False
+        )
+        generated_description = response.choices[0].message.content.strip()
+        print(f"Debug (utils.py): Generated description for {cheese_name}: {generated_description}")
+        return generated_description if generated_description else "A delightful cheese, perfect for various occasions." # Fallback if empty
+    except Exception as e:
+        print(f"Error generating product description for '{cheese_name}' via LLM: {e}")
+        return "Explore this cheese to discover its unique qualities." # Fallback in case of error 
