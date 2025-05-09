@@ -11,6 +11,27 @@ from utils import (
     get_enhanced_cheese_description_openai # Import the new function
 )
 
+# Custom JSON encoder to handle non-serializable objects
+class PineconeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        # Convert non-serializable objects to strings
+        try:
+            return super().default(obj)
+        except TypeError:
+            return str(obj)
+
+# Function to safely convert Pinecone results to JSON-serializable format
+def sanitize_for_json(obj):
+    if isinstance(obj, dict):
+        return {k: sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(item) for item in obj]
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    else:
+        # Convert any other type to string
+        return str(obj)
+
 # --- Streamlit Page Configuration ---
 st.set_page_config(
     page_title="🧀 Cheese Chatbot",
@@ -74,17 +95,51 @@ if 'stop_generation_requested' in st.session_state: # Initialize if not present
     st.session_state.stop_generation_requested = False
 
 # Add an expander to the sidebar that shows the retrieved contexts
-active_session = st.session_state.chat_sessions[st.session_state.active_chat_index]
-with st.sidebar.expander("🔍 Retrieved Contexts", expanded=False):
-    # Get the contexts from the active session
-    last_contexts = active_session.get("last_contexts", [])
-    if last_contexts:
-        st.code(json.dumps(last_contexts, indent=2), language="json")
-    else:
-        st.write("No context data available yet.")
+# active_session = st.session_state.chat_sessions[st.session_state.active_chat_index]
+# with st.sidebar.expander("🔍 Retrieved Contexts", expanded=False):
+#     # Get the contexts from the active session
+#     last_contexts = active_session.get("last_contexts", [])
+#     if last_contexts:
+#         st.code(json.dumps(last_contexts, indent=2), language="json")
+#     else:
+#         st.write("No context data available yet.")
 
 # --- Sidebar: New Chat Button and Clear Active Chat Button ---
-st.sidebar.divider()
+
+# Create a more reliable and visible retrieval context display
+# st.sidebar.divider()
+# st.sidebar.write("🔍 Retrieved Information:")
+# active_session = st.session_state.chat_sessions[st.session_state.active_chat_index]
+# last_contexts = active_session.get("last_contexts", [])
+
+# if not last_contexts:
+#     st.sidebar.info("No context data available yet. Ask a question about cheese to see retrieval data here.")
+# else:
+#     # Display count of retrieved items
+#     st.sidebar.success(f"Found {len(last_contexts)} items from Pinecone")
+    
+#     # Create a more noticeable expander that's expanded by default for visibility
+#     with st.sidebar.expander("View Retrieval Data", expanded=True):
+#         # Pretty print the JSON with proper indentation
+#         try:
+#             # Sanitize the data first to make it JSON-serializable
+#             sanitized_contexts = sanitize_for_json(last_contexts)
+#             # Use the custom encoder as a fallback for any objects that weren't properly sanitized
+#             json_str = json.dumps(sanitized_contexts, indent=2, cls=PineconeEncoder)
+#             st.code(json_str, language="json")
+#         except Exception as e:
+#             st.error(f"Error displaying contexts: {e}")
+#             # Fallback to display a simpler representation
+#             st.write("Retrieved context data (simplified view):")
+#             for i, item in enumerate(last_contexts):
+#                 st.write(f"Item {i+1}: {type(item).__name__} object")
+#                 if hasattr(item, 'metadata') and item.metadata:
+#                     st.write(f"  Metadata keys: {', '.join(item.metadata.keys()) if hasattr(item.metadata, 'keys') else str(type(item.metadata))}")
+#                 elif isinstance(item, dict) and 'metadata' in item:
+#                     meta = item.get('metadata', {})
+#                     st.write(f"  Metadata keys: {', '.join(meta.keys()) if hasattr(meta, 'keys') else str(type(meta))}")
+
+# st.sidebar.divider()
 st.sidebar.write("Chat Management:")
 
 # Helper function to generate a name for a chat session
@@ -234,9 +289,9 @@ When a user asks a question, follow these steps:
     Brand
     Price (e.g. $16.76)
     Price per lb (e.g. $3.35/lb)
+    Description (e.g. This cheese is labeled Brown, and eating this cheese can help you absorb various nutrients and is good for your health. However, {You can display a warning message.})
     Related Items (e.g. Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 and Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 include URLs.)
     Status: Only state if it explicitly states 'Back in stock' or 'Out of stock'. If it says 'In stock' or 'In stock', there is no need to mention the status. Warning text
-    Display the description of the cheese below this. (For example, this cheese is labeled Brown, and eating this cheese can help you absorb various nutrients and is good for your health. However, {You can display a warning message.})
     Price and price per mass are displayed on the same line. Price per mass text is smaller than price text. Warning text is red text.
     Sort in the order above.
 6. If the number of cheeses found in the context is less than the requested number or less than 6 (if a general list is requested), only list the cheeses that are available. Do not mention the fact that there are fewer items displayed unless there is a specific question about the number.
@@ -259,7 +314,7 @@ with chat_container:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
                 
-                # Updated expander logic to handle both raw contexts and processed aggregate context for the active session
+            # Updated expander logic to handle both raw contexts and processed aggregate context for the active session
             if message["role"] == "assistant" and (message.get("context_data") or message.get("processed_context_for_display")):
                 with st.expander("🔍 View Context Data Used", expanded=False):
                     processed_display = message.get("processed_context_for_display")
@@ -277,17 +332,30 @@ with chat_container:
                                 # If not a JSON string, treat as a summary string and wrap it
                                 st.code(json.dumps({"summary_context": processed_display}, indent=2), language="json")
                         elif isinstance(processed_display, (list, dict)): # If it was already structured
-                                st.code(json.dumps(processed_display, indent=2), language="json")
+                            # Sanitize before attempting to display
+                            try:
+                                sanitized_display = sanitize_for_json(processed_display)
+                                st.code(json.dumps(sanitized_display, indent=2, cls=PineconeEncoder), language="json")
+                            except Exception as e:
+                                st.error(f"Could not display processed context: {e}")
+                                st.write(str(processed_display))
                         else:
-                                st.markdown(str(processed_display)) # Fallback
+                            st.markdown(str(processed_display)) # Fallback
 
                     elif isinstance(raw_context_data, list) and raw_context_data:
                         # Display raw_context_data (list of dicts from Pinecone) as JSON
                         try:
-                            st.code(json.dumps(raw_context_data, indent=2), language="json")
-                        except TypeError as e:
-                            st.write(f"Could not serialize context to JSON: {e}")
-                            st.write(raw_context_data) # Show raw if serialization fails
+                            # Sanitize before attempting to display
+                            sanitized_data = sanitize_for_json(raw_context_data)
+                            st.code(json.dumps(sanitized_data, indent=2, cls=PineconeEncoder), language="json")
+                        except Exception as e:
+                            st.error(f"Could not serialize context to JSON: {e}")
+                            # Show simplified view as fallback
+                            st.write("Retrieved context data (simplified view):")
+                            for i, item in enumerate(raw_context_data):
+                                st.write(f"Item {i+1}: {type(item).__name__} object")
+                                if hasattr(item, 'metadata') and item.metadata:
+                                    st.write(f"  Metadata keys: {', '.join(item.metadata.keys()) if hasattr(item.metadata, 'keys') else str(type(item.metadata))}")
                     else:
                         st.write("No context data to display for this response.")
 
@@ -394,11 +462,11 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
             
             if st.session_state.is_generating:
                 print(f"Debug (app.py): Normal query. Filters: {metadata_filters}")
-            with st.spinner("Searching our cheese collection..."):
-                actual_filters_for_pinecone = metadata_filters if isinstance(metadata_filters, dict) and "query_type" not in metadata_filters else None
-                retrieved_contexts = query_pinecone(prompt, top_k=20, metadata_filter=actual_filters_for_pinecone)
-                active_chat_session["last_contexts"] = retrieved_contexts # Store in active session
-                context_for_llm = format_context_for_llm(retrieved_contexts) # Format normal context
+                with st.spinner("Searching our cheese collection..."):
+                    actual_filters_for_pinecone = metadata_filters if isinstance(metadata_filters, dict) and "query_type" not in metadata_filters else None
+                    retrieved_contexts = query_pinecone(prompt, top_k=20, metadata_filter=actual_filters_for_pinecone)
+                    active_chat_session["last_contexts"] = retrieved_contexts # Store in active session
+                    context_for_llm = format_context_for_llm(retrieved_contexts) # Format normal context
             
             # Construct messages for LLM, including chat history from the active session
             messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
