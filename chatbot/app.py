@@ -6,7 +6,8 @@ from utils import (
     get_pinecone_index,
     query_pinecone,
     get_llm_response,
-    extract_filters_from_query # We have this, but might not use its output directly yet
+    extract_filters_from_query,
+    get_enhanced_cheese_description_openai # Import the new function
 )
 
 # --- Streamlit Page Configuration ---
@@ -166,8 +167,20 @@ def format_context_for_llm(contexts, aggregate_data=None): # Added aggregate_dat
     formatted_texts = []
     for i, context in enumerate(contexts):
         meta = context.get('metadata', {})
+        cheese_name = meta.get('name', 'N/A')
+        description = meta.get('description', 'N/A')
+
+        # Condition to fetch enhanced description
+        if cheese_name != 'N/A' and (not description or description == 'N/A' or len(description) < 30): # Arbitrary length check
+            print(f"Debug (app.py): Description for '{cheese_name}' is short or missing. Fetching enhanced description.")
+            enhanced_description = get_enhanced_cheese_description_openai(cheese_name)
+            if enhanced_description:
+                description = enhanced_description # Replace original description
+            else:
+                print(f"Debug (app.py): Failed to get enhanced description for '{cheese_name}'. Using original.")
+
         text = f"Item {i+1}:\n"
-        text += f"  Name: {meta.get('name', 'N/A')}\n"
+        text += f"  Name: {cheese_name}\n"
         text += f"  Category: {meta.get('category', 'N/A')}\n"
         text += f"  Brand: {meta.get('brand', 'N/A')}\n"
         text += f"  Price: {meta.get('price_str', 'N/A')}\n"
@@ -175,7 +188,7 @@ def format_context_for_llm(contexts, aggregate_data=None): # Added aggregate_dat
         text += f"  Status: {meta.get('status', 'N/A')}\n"
         text += f"  Image URL: {meta.get('image_url', 'N/A')}\n"
         text += f"  Related Items: {meta.get('related_items', 'N/A')}\n"
-        text += f"  Description: {meta.get('description', 'N/A')}\n"
+        text += f"  Description: {description}\n"  # Use potentially enhanced description
         text += f"  Warning Text: {meta.get('warning_text', 'N/A')}\n"
         text += f"  SKU: {meta.get('sku', 'N/A')}\n"
         text += f"  UPC: {meta.get('upc', 'N/A')}\n"
@@ -193,17 +206,17 @@ When a user asks a question, follow these steps:
 2. If the CONTEXT is empty or there is no information to answer the question, clearly state that the information is not in the database.
 3. When providing information about a specific cheese, if the user requests a list or multiple cheeses, display up to 6 cheeses.
 4. Do not rely solely on the 'CONTEXT' section for information about the cheese, but provide a rich description.
-5. For each cheese, clearly list the following details, if possible in context. Also, do not display only the information presented below, but present the content in the body of the text. Product Name
-Image (You can display the image in multiple lines, and display the image in small size. Clicking on the image should display the corresponding Cheese homepage in a new tab. The Cheese homepage URL is "More URL" in the metadata.)
-Brand
-Description
-Price (e.g. $16.76)
-Price per lb (e.g. $3.35/lb)
-Related Items (e.g. Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 and Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 include URLs.)
-Status: Only state if it explicitly states 'Back in stock' or 'Out of stock'. If it says 'In stock' or 'In stock', there is no need to mention the status. Warning text
-Display the description of the cheese below this. (For example, this cheese is labeled Brown, and eating this cheese can help you absorb various nutrients and is good for your health. However, {You can display a warning message.})
-Price and price per mass are displayed on the same line. Price per mass text is smaller than price text. Warning text is red text.
-Sort in the order above.
+5. For each cheese, clearly list the following details, if possible in context. Also, do not display only the information presented below, but present the content in the body of the text.
+    Product Name
+    Image (You can display only the image in multiple lines, and display the image in small size. Clicking on the image should display the corresponding Cheese homepage in a new tab. The Cheese homepage URL is "more_url" in the metadata.)
+    Brand
+    Price (e.g. $16.76)
+    Price per lb (e.g. $3.35/lb)
+    Related Items (e.g. Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 and Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 include URLs.)
+    Status: Only state if it explicitly states 'Back in stock' or 'Out of stock'. If it says 'In stock' or 'In stock', there is no need to mention the status. Warning text
+    Display the description of the cheese below this. (For example, this cheese is labeled Brown, and eating this cheese can help you absorb various nutrients and is good for your health. However, {You can display a warning message.})
+    Price and price per mass are displayed on the same line. Price per mass text is smaller than price text. Warning text is red text.
+    Sort in the order above.
 6. If the number of cheeses found in the context is less than the requested number or less than 6 (if a general list is requested), only list the cheeses that are available. Do not mention the fact that there are fewer items displayed unless there is a specific question about the number.
 7. Be concise and helpful. If the user asks a general question (e.g., "Hello"), do not search the database, but answer politely.
 8. If the context includes a warning_text for the product, you can mention it if it is relevant to the user's question about product safety or a specific ingredient.

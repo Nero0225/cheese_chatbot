@@ -241,3 +241,36 @@ def extract_filters_from_query(user_query):
     except Exception as e:
         print(f"Error (extract_filters_from_query): Exception during LLM call or processing: {e}")
         return None 
+
+def get_enhanced_cheese_description_openai(cheese_name):
+    """Gets an enhanced, customer-facing description for a cheese using OpenAI."""
+    if not cheese_name or cheese_name == 'N/A':
+        return None
+
+    client = get_openai_client()
+    prompt_messages = [
+        {
+            "role": "system", 
+            "content": "You are a creative food writer. Your task is to generate an appealing and informative description for a cheese, suitable for a customer. Focus on general characteristics, potential taste profiles, texture, common culinary uses, or interesting facts. Do not invent specific brand details, prices, or availability. Make it sound delicious and inviting. Keep it concise, around 2-4 sentences."
+        },
+        {
+            "role": "user", 
+            "content": f"Please provide an enhanced description for the following cheese: {cheese_name}"
+        }
+    ]
+
+    print(f"Debug (utils.py): Requesting enhanced description for: {cheese_name}")
+    try:
+        response = client.chat.completions.create(
+            model=LLM_MODEL, # Or a potentially cheaper model like gpt-3.5-turbo if cost is a concern for descriptions
+            messages=prompt_messages,
+            temperature=0.7, # Allow for some creativity
+            max_tokens=150, # Limit length of description
+            stream=False # Not streaming for this internal call
+        )
+        enhanced_description = response.choices[0].message.content.strip()
+        print(f"Debug (utils.py): Enhanced description for {cheese_name}: {enhanced_description}")
+        return enhanced_description
+    except Exception as e:
+        print(f"Error getting enhanced description for '{cheese_name}': {e}")
+        return None # Return None if there's an error 
