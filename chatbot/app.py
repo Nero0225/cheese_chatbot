@@ -464,7 +464,7 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
                 print(f"Debug (app.py): Normal query. Filters: {metadata_filters}")
                 with st.spinner("Searching our cheese collection..."):
                     actual_filters_for_pinecone = metadata_filters if isinstance(metadata_filters, dict) and "query_type" not in metadata_filters else None
-                    retrieved_contexts = query_pinecone(prompt, top_k=20, metadata_filter=actual_filters_for_pinecone)
+                    retrieved_contexts = query_pinecone(prompt, top_k=100, metadata_filter=actual_filters_for_pinecone)
                     active_chat_session["last_contexts"] = retrieved_contexts # Store in active session
                     context_for_llm = format_context_for_llm(retrieved_contexts) # Format normal context
             
