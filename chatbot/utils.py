@@ -178,6 +178,9 @@ Special query types (if detected, prioritize returning this over other filters):
   `{{"query_type": "aggregate_request", "request_details": "price_range"}}`
   If an aggregate request is detected, do not include other filters like price or specific brand unless the aggregate request itself is constrained (e.g., "show me all brands that offer cheddar" - this is complex, for now, treat broad aggregate requests simply).
 
+- If the query is asking about the count or total number of cheese categories or types (e.g., "How many different kinds of cheese products do you have?", "How many cheese categories in total?", "What's the total number of cheese types?"), return:
+  `{{"query_type": "aggregate_request", "request_details": "count_categories"}}`
+
 Status filter:
 - If the query asks for items "out of stock" or "unavailable", use `{{"status": "back in stock soon"}}`.
 

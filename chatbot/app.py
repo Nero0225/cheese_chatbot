@@ -448,6 +448,22 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
                             processed_context_for_llm = f"The price range for cheeses I found is from ${min_price:.2f} to ${max_price:.2f}."
                         else:
                             processed_context_for_llm = "I couldn't determine the price range from the available data."
+                    elif request_details == "count_categories":
+                        # Extract unique categories from all cheese products
+                        categories = set()
+                        for item in aggregate_query_contexts:
+                            category = item.get('metadata', {}).get('category', '').strip()
+                            if category and category.lower() not in ['n/a', 'na', 'none', '']:
+                                categories.add(category.title())  # Store in title case for display
+                        
+                        # Count unique categories and prepare response
+                        category_count = len(categories)
+                        sorted_categories = sorted(list(categories))
+                        
+                        if category_count > 0:
+                            processed_context_for_llm = f"I found {category_count} different cheese categories in our database: {', '.join(sorted_categories)}."
+                        else:
+                            processed_context_for_llm = "I couldn't identify distinct cheese categories in our database."
                     else:
                         processed_context_for_llm = "I can look for specific cheeses based on name, brand, category, or price. How can I help?"
                         is_aggregate_query = False # CORRECTED: Revert to normal flow for unknown aggregate types
