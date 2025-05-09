@@ -487,14 +487,9 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
             # Construct messages for LLM, including chat history from the active session
             messages_for_llm = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            # Add previous messages from the active session
-            for i in range(len(active_chat_session["messages"]) - 1):
-                msg = active_chat_session["messages"][i]
-                messages_for_llm.append({"role": msg["role"], "content": msg["content"]})
-            
             # Add the current user prompt (the last message in the active session) with context
             current_user_query = active_chat_session["messages"][-1]['content'] 
-            current_user_message_content = f"CONTEXT:\\n{context_for_llm}\\n\\nUSER QUESTION: {current_user_query}\\n\\nASSISTANT ANSWER:"
+            current_user_message_content = f"CONTEXT:\n{context_for_llm}\n\nUSER QUESTION: {current_user_query}\n\nASSISTANT ANSWER:"
             messages_for_llm.append({"role": "user", "content": current_user_message_content})
             
             # Debug: Print the messages being sent to the LLM
