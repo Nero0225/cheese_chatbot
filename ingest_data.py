@@ -92,7 +92,8 @@ def prepare_cheese_data(cheese_item):
         "small_images": ",".join(cheese_item.get("small_images", [])),
         "case_status": str(cheese_item.get("case_status", "N/A")),
         "description": str(cheese_item.get("description", "N/A")),
-        "related_items": str(cheese_item.get("related_items", "N/A"))
+        "related_items": str(cheese_item.get("related_items", "N/A")),
+        "more_url": str(cheese_item.get("more_url", "N/A"))
     }
     
     # Attempt to convert price to float for potential range queries

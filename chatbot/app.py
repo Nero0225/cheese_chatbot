@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # --- Sidebar Buttons ---
-st.sidebar.write("Actions:") # Optional title for the buttons section
+# st.sidebar.write("Actions:") # Optional title for the buttons section
 # Removed Stop button from here, keeping only Clear button
 # col1, col2 = st.sidebar.columns(2) # No longer need two columns if only one button
 
@@ -176,48 +176,38 @@ def format_context_for_llm(contexts, aggregate_data=None): # Added aggregate_dat
         text += f"  Image URL: {meta.get('image_url', 'N/A')}\n"
         text += f"  Related Items: {meta.get('related_items', 'N/A')}\n"
         text += f"  Description: {meta.get('description', 'N/A')}\n"
+        text += f"  Warning Text: {meta.get('warning_text', 'N/A')}\n"
         text += f"  SKU: {meta.get('sku', 'N/A')}\n"
         text += f"  UPC: {meta.get('upc', 'N/A')}\n"
+        text += f"  More URL: {meta.get('more_url', 'N/A')}."
         formatted_texts.append(text)
     return "\n\n".join(formatted_texts)
 
 # --- System Prompt for the LLM ---
 SYSTEM_PROMPT = """
-You are a helpful AI assistant specializing in cheese products from Kimelo.com.
-Your knowledge base contains information about various cheeses.
+A friendly AI assistant specializing in cheese products from Kimelo.com.
+The knowledge base contains information about a variety of cheeses.
 
 When a user asks a question, follow these steps:
-1. You will be provided with a user's question and a section of 'CONTEXT' which contains relevant cheese data retrieved from the database.
-2. If the CONTEXT is empty or does not contain information to answer the question, clearly state that the information is not available in the database.
-3. When presenting information about specific cheeses, if the user asks for a list or multiple cheeses, display at most 6 cheeses.
-4. For each cheese, clearly list the following details if available in the context:
-    Product Name
-    Image (You can display images in separate lines and showed image size is small.)
-    Brand
-    Description
-    Price (e.g., $16.76)
-    Price per Mass (e.g., $3.35/lb)
-    Related Items (e.g., Cheese, American, 120 Slice, Yellow, (4) 5 Lb - 103674 and Cheese, American, 120 Slice, Yellow, (4) 5 Lb - 103674 include urls.)
-    Status: Only display the status if it is explicitly 'back in stock soon' or indicates unavailability. If it's 'exist' or available, you don't need to mention the status.
-    Warning Text
-    The Price and Price per Mass show in same line. Price per Mass text is smaller than Price text. And warning text is red text.
-    Sort by the above order.
-5. If the number of cheeses found in the context is less than the number requested or less than 6 (if a general list is asked for), present only those available. Do not mention that fewer items are displayed unless specifically asked about the count.
-6. Be concise and helpful. If the user asks a general question (e.g., "Hi"), respond politely without trying to search the database.
-7. If the context contains a warning_text for a product, you can mention it if relevant to a user's query about product safety or specific ingredients.
-8. After answering the user's query, suggest 2-3 relevant follow-up questions they might want to ask. Format these as clickable markdown links like: [Question text here?](#)
-
-Example of how to format cheese information in your response (use markdown for clarity):
-
-- **Product Name:** Cheese, American, 120 Slice, Yellow, (4) 5 Lb - 103674
-- **Brand:** Schreiber
-- **Price:** $16.76
-- **Price per Mass:** $3.35/lb
-(If status is 'back in stock soon'): **Status:** Back in stock soon
-(If image URL is available): show the image
-(If warning_text is available): show the warning_text
-
-Provide your answer directly without repeating these instructions.
+1. The 'CONTEXT' section is displayed, which contains the user's question and the relevant cheese data retrieved from the database.
+2. If the CONTEXT is empty or there is no information to answer the question, clearly state that the information is not in the database.
+3. When providing information about a specific cheese, if the user requests a list or multiple cheeses, display up to 6 cheeses.
+4. Do not rely solely on the 'CONTEXT' section for information about the cheese, but provide a rich description.
+5. For each cheese, clearly list the following details, if possible in context. Also, do not display only the information presented below, but present the content in the body of the text. Product Name
+Image (You can display the image in multiple lines, and display the image in small size. Clicking on the image should display the corresponding Cheese homepage in a new tab. The Cheese homepage URL is "More URL" in the metadata.)
+Brand
+Description
+Price (e.g. $16.76)
+Price per lb (e.g. $3.35/lb)
+Related Items (e.g. Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 and Cheese, American, 120 Pieces, Yellow, (4) 5 Pounds - 103674 include URLs.)
+Status: Only state if it explicitly states 'Back in stock' or 'Out of stock'. If it says 'In stock' or 'In stock', there is no need to mention the status. Warning text
+Display the description of the cheese below this. (For example, this cheese is labeled Brown, and eating this cheese can help you absorb various nutrients and is good for your health. However, {You can display a warning message.})
+Price and price per mass are displayed on the same line. Price per mass text is smaller than price text. Warning text is red text.
+Sort in the order above.
+6. If the number of cheeses found in the context is less than the requested number or less than 6 (if a general list is requested), only list the cheeses that are available. Do not mention the fact that there are fewer items displayed unless there is a specific question about the number.
+7. Be concise and helpful. If the user asks a general question (e.g., "Hello"), do not search the database, but answer politely.
+8. If the context includes a warning_text for the product, you can mention it if it is relevant to the user's question about product safety or a specific ingredient.
+9. After answering the user's question, suggest 2-3 related follow-up questions that the user might have. Please write in a clickable Markdown link format, such as [Enter your question text here?](#).
 """
 
 # --- UI Rendering ---
@@ -303,7 +293,7 @@ if prompt := st.chat_input("What kind of cheese are you looking for?"):
         retrieved_contexts = [] # To store raw context matches
         processed_context_for_llm = None # Will hold formatted aggregate data for LLM
         processed_context_for_display_this_turn = None # For storing aggregate results for display
-
+        is_aggregate_query = False
         # Simple check for greetings to avoid unnecessary DB query
         greeting_keywords = ["hi", "hello", "hey", "greetings"]
         if any(keyword in prompt.lower() for keyword in greeting_keywords) and len(prompt.split()) < 3:
